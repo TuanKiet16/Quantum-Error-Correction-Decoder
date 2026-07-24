@@ -1,5 +1,6 @@
 import numpy as np
 import pennylane as qml
+import pytest
 from qec_decoder.models import encoding
 
 
@@ -14,6 +15,3 @@ def test_angle_encode_flips_qubit_on_one():
     z0, z1 = circ(np.array([1.0, 0.0]))
     assert z0 == pytest.approx(-1.0, abs=1e-6)  # RY(pi) -> |1>
     assert z1 == pytest.approx(1.0, abs=1e-6)   # RY(0)  -> |0>
-
-
-import pytest
