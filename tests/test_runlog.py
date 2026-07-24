@@ -24,6 +24,18 @@ def test_run_context_records_metrics(tmp_path):
     assert rec["metrics"]["acc"] == 0.9 and rec["duration_s"] >= 0
 
 
+def test_run_context_records_error_on_exception():
+    run = None
+    try:
+        with runlog.Run("unit3", {"x": 1}, seed=3) as run:
+            raise ValueError("boom")
+    except ValueError:
+        pass
+    assert run is not None and run.path is not None
+    rec = json.load(open(run.path))
+    assert rec["extra"]["error"] == "boom"
+
+
 def test_get_logger_idempotent():
     a = runlog.get_logger()
     b = runlog.get_logger()

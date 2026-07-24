@@ -11,11 +11,11 @@ class InjectReq(BaseModel):
 class DecodeReq(BaseModel):
     d: int
     detection_events: list
-    decoder: str = "mwpm"          # "qcnn" | "cnn" | "mwpm"
+    decoder: str = "mwpm"          # "qcnn_cong" | "qcnn_hybrid" | "cnn" | "mwpm"
 
 
 class BatchReq(BaseModel):
     d: int
     p: float
     shots: int = 2000
-    decoder: str = "mwpm"
+    decoder: str = "mwpm"          # "qcnn_cong" | "qcnn_hybrid" | "cnn" | "mwpm"

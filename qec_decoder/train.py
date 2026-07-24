@@ -29,22 +29,28 @@ def make_dataset(d: int, ps, shots_per_p: int, seed: int = SEED):
     return np.concatenate(Xs), np.concatenate(ys)
 
 
-def train(name, d, ps, shots_per_p, epochs, out_dir="checkpoints", seed=SEED):
+def train(name, d, ps, shots_per_p, epochs, out_dir="checkpoints", seed=SEED,
+          batch_size: int = 256):
     set_seed(seed)
     X, y = make_dataset(d, ps, shots_per_p, seed)
     n_detectors = X.shape[1]
     model = build_model(name, n_detectors)
     Xt = torch.tensor(X)
     yt = torch.tensor(y).unsqueeze(1)
+    dataset = torch.utils.data.TensorDataset(Xt, yt)
+    gen = torch.Generator().manual_seed(seed)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
+                                         shuffle=True, generator=gen)
     opt = torch.optim.Adam(model.parameters(), lr=1e-2)
     loss_fn = nn.BCEWithLogitsLoss()
     model.train()
     for _ in range(epochs):
-        opt.zero_grad()
-        logits = model(Xt)
-        loss = loss_fn(logits, yt)
-        loss.backward()
-        opt.step()
+        for Xb, yb in loader:
+            opt.zero_grad()
+            logits = model(Xb)
+            loss = loss_fn(logits, yb)
+            loss.backward()
+            opt.step()
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, f"{name}_d{d}.pt")
     torch.save({"state_dict": model.state_dict(), "name": name, "d": d,
@@ -61,10 +67,12 @@ def main():
     ap.add_argument("--shots", type=int, default=5000)
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--out", default="checkpoints")
+    ap.add_argument("--batch-size", type=int, default=256)
     a = ap.parse_args()
     from qec_decoder.runlog import Run
     with Run("train", vars(a), seed=SEED) as run:
-        path = train(a.model, a.d, a.ps, a.shots, a.epochs, a.out)
+        path = train(a.model, a.d, a.ps, a.shots, a.epochs, a.out,
+                     batch_size=a.batch_size)
         run.record({"checkpoint": path})
     print(f"saved {path}")
 

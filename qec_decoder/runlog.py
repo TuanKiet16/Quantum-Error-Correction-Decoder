@@ -76,9 +76,10 @@ class Run:
 
     def __exit__(self, exc_type, exc, tb):
         dur = time.perf_counter() - self._t0
+        extra = {"error": str(exc)} if exc_type else {}
         self.path = save_run(self.kind, self.args, self.metrics, seed=self.seed,
                              out_dir=self.out_dir, start=self._start,
-                             duration_s=dur)
+                             duration_s=dur, extra=extra)
         if exc_type:
             get_logger().error(f"run[{self.kind}] failed: {exc}")
         return False
