@@ -17,3 +17,12 @@ def test_qcnn_cong_forward():
     x = torch.rand(2, 12)
     y = model(x)
     assert y.shape == (2, 1)
+
+
+def test_qcnn_hybrid_forward():
+    import torch
+    from qec_decoder.models.qcnn_hybrid import QCNNHybrid
+    model = QCNNHybrid(n_detectors=24, n_qubits=10)
+    x = torch.rand(2, 24)
+    y = model(x)
+    assert y.shape == (2, 1)
