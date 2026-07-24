@@ -41,8 +41,12 @@ def main():
     ap.add_argument("--out", type=str, default="data/")
     ap.add_argument("--seed", type=int, default=SEED)
     a = ap.parse_args()
-    dets, obs = generate(a.d, a.p, a.shots, a.seed)
-    path = save_npz(a.out, a.d, a.p, dets, obs)
+    from qec_decoder.runlog import Run
+    with Run("data_gen", vars(a), seed=a.seed) as run:
+        dets, obs = generate(a.d, a.p, a.shots, a.seed)
+        path = save_npz(a.out, a.d, a.p, dets, obs)
+        run.record({"path": path, "dets_shape": list(dets.shape),
+                    "obs_shape": list(obs.shape)})
     print(f"saved {path}  dets={dets.shape} obs={obs.shape}")
 
 

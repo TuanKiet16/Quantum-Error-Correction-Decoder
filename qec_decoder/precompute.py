@@ -39,8 +39,13 @@ def main():
     ap.add_argument("--shots", type=int, default=20000)
     ap.add_argument("--out", default="results/threshold.json")
     a = ap.parse_args()
-    res = sweep_mwpm(a.ds, a.ps, a.shots)
-    print(write_threshold(res, a.out))
+    from qec_decoder.runlog import Run
+    with Run("precompute", vars(a)) as run:
+        res = sweep_mwpm(a.ds, a.ps, a.shots)
+        out = write_threshold(res, a.out)
+        run.record({"out": out, "n_points": len(res["points"]),
+                    "lambda": res["lambda"]})
+    print(out)
 
 
 if __name__ == "__main__":

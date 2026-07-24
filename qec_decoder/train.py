@@ -62,7 +62,10 @@ def main():
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--out", default="checkpoints")
     a = ap.parse_args()
-    path = train(a.model, a.d, a.ps, a.shots, a.epochs, a.out)
+    from qec_decoder.runlog import Run
+    with Run("train", vars(a), seed=SEED) as run:
+        path = train(a.model, a.d, a.ps, a.shots, a.epochs, a.out)
+        run.record({"checkpoint": path})
     print(f"saved {path}")
 
 

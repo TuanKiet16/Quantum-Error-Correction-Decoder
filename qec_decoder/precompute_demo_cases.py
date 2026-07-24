@@ -72,7 +72,11 @@ def main():
     ap.add_argument("--out", default="results/demo_cache.json")
     a = ap.parse_args()
     ckpts = dict(kv.split("=", 1) for kv in a.ckpt)
-    print(build_cache(ckpts, a.ds, a.out))
+    from qec_decoder.runlog import Run
+    with Run("demo_cache", vars(a)) as run:
+        out = build_cache(ckpts, a.ds, a.out)
+        run.record({"out": out})
+    print(out)
 
 
 if __name__ == "__main__":

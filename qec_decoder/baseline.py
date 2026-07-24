@@ -41,7 +41,10 @@ def main():
     ap.add_argument("--p", type=float, required=True)
     ap.add_argument("--shots", type=int, default=20000)
     a = ap.parse_args()
-    out = evaluate(a.d, a.p, a.shots)
+    from qec_decoder.runlog import Run
+    with Run("baseline", vars(a)) as run:
+        out = evaluate(a.d, a.p, a.shots)
+        run.record(out)
     print(out)
 
 

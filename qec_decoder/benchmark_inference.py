@@ -27,7 +27,11 @@ def main():
     ap.add_argument("--p", type=float, default=0.01)
     ap.add_argument("--repeats", type=int, default=50)
     a = ap.parse_args()
-    print(benchmark(a.ckpt, a.d, a.p, a.repeats))
+    from qec_decoder.runlog import Run
+    with Run("benchmark", vars(a)) as run:
+        res = benchmark(a.ckpt, a.d, a.p, a.repeats)
+        run.record(res)
+    print(res)
 
 
 if __name__ == "__main__":
