@@ -589,3 +589,18 @@ cython_debug/
 # Slide deck source (local only; export PDF is committed)
 slides/deck.html
 slides/assets/
+
+# Agent / tool rule files + brainstorming specs (do not commit)
+AGENTS.md
+.cursor/
+.windsurf/
+.clinerules/
+.opencode/
+.github/copilot-instructions.md
+docs/superpowers/
+
+# Data directories and HPC environment
+data/
+.venv-hpc/
+logs/
+results/runs/
