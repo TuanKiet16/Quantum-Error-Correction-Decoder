@@ -19,17 +19,19 @@ class QCNNHybrid(nn.Module):
         q = n_qubits
         dev = qml.device("lightning.qubit", wires=q)
 
-        def circuit(inputs, conv1, pool1):
+        def circuit(inputs, conv1, pool1, conv2):
             # Index the feature (last) axis so a batched [B, q] input broadcasts
             # per-wire; angle_encode's zip otherwise iterates the batch axis.
             encoding.angle_encode([inputs[..., i] for i in range(q)], wires=range(q))
             wires = list(range(q))
             _conv_layer(conv1, wires)
             wires = _pool_layer(pool1, wires)
+            if len(wires) > 1:
+                _conv_layer(conv2, wires)
             return qml.expval(qml.PauliZ(wires[0]))
 
         qnode = qml.QNode(circuit, dev, interface="torch", diff_method="adjoint")
-        weight_shapes = {"conv1": (q, 2), "pool1": (q // 2,)}
+        weight_shapes = {"conv1": (q, 2), "pool1": (q // 2,), "conv2": (q // 2, 2)}
         self.qlayer = qml.qnn.TorchLayer(qnode, weight_shapes)
         self.head = nn.Linear(1, 1)
 
