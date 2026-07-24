@@ -1,4 +1,3 @@
-import numpy as np
 import pennylane as qml
 import torch
 import torch.nn as nn
@@ -48,7 +47,7 @@ class QCNNCong(nn.Module):
             return qml.expval(qml.PauliZ(wires[0]))
 
         qnode = qml.QNode(circuit, dev, interface="torch", diff_method="adjoint")
-        weight_shapes = {"conv1": (q, 2), "pool1": (q // 2,), "conv2": (q, 2)}
+        weight_shapes = {"conv1": (q, 2), "pool1": (q // 2,), "conv2": (q // 2, 2)}
         self.qlayer = qml.qnn.TorchLayer(qnode, weight_shapes)
         self.head = nn.Linear(self.n_patches, 1)
 
