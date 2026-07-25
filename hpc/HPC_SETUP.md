@@ -25,3 +25,19 @@ build the cache:
 python -m qec_decoder.precompute_demo_cases \
     --ckpt qcnn_cong=checkpoints/qcnn_cong_d3.pt cnn=checkpoints/cnn_d3.pt --ds 3
 ```
+
+## Optional: Google 105Q dataset (Part 6)
+
+Real Google hardware detection records (d3/d5/d7). ~5.7 GB. Only needed to
+validate decoders against experimental data; the rest of the pipeline runs
+without it. Fetch on HPC scratch, not locally:
+
+```bash
+bash hpc/fetch_google_data.sh data
+# resumable; verifies md5 21fa6ad35b395d838ebcdbc92e364a12
+```
+
+Lands at `data/google_105Q_surface_code_d3_d5_d7.zip`, where
+`qec_decoder.google_data.GOOGLE_ZIP` expects it. Parsing (`load()`) is still a
+stub — read the README inside the zip first, then map its .dem + detection
+records into `(detection_events[N,D], observable_flips[N,L])`.
