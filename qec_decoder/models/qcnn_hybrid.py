@@ -32,16 +32,22 @@ class QCNNHybrid(nn.Module):
             wires = _pool_layer(pool1, wires)
             if len(wires) > 1:
                 _conv_layer(conv2, wires)
-            return qml.expval(qml.PauliZ(wires[0]))
+            # Read every surviving wire, not just one, so the quantum head
+            # exposes a feature vector to the classifier.
+            return [qml.expval(qml.PauliZ(w)) for w in wires]
 
+        self.n_meas = q // 2            # _pool_layer keeps wires[::2]
         qnode = qml.QNode(circuit, dev, interface="torch", diff_method=diff_method)
         weight_shapes = {"conv1": (q, 2), "pool1": (q // 2,), "conv2": (q // 2, 2)}
         self.qlayer = qml.qnn.TorchLayer(qnode, weight_shapes)
-        self.head = nn.Linear(1, 1)
+        hidden = 32
+        self.head = nn.Sequential(
+            nn.Linear(self.n_meas, hidden), nn.ReLU(), nn.Linear(hidden, 1),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         h = self.reduce(x.unsqueeze(1))            # [B, 8, n_qubits]
         h = h.flatten(1)
         feat = torch.sigmoid(self.to_features(h))  # [B, n_qubits] in [0,1]
-        q_out = self.qlayer(feat).reshape(-1, 1)   # [B, 1]
+        q_out = self.qlayer(feat)                  # [B, n_meas]
         return self.head(q_out)

@@ -19,6 +19,13 @@ def test_epsilon_per_cycle_formula():
     assert metrics.epsilon_per_cycle(p_L, t) == pytest.approx(expected)
 
 
+def test_epsilon_per_cycle_saturates_above_half():
+    # A worse-than-random decoder (p_L > 0.5) must not produce a complex value;
+    # it saturates at 0.5 rather than crashing.
+    eps = metrics.epsilon_per_cycle(0.7, 5)
+    assert isinstance(eps, float) and eps == pytest.approx(0.5)
+
+
 def test_fit_epsilon_recovers_slope():
     # construct p_L(t) from a known epsilon via (1-2pL) = (1-2eps)^t
     eps = 0.02
