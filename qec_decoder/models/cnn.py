@@ -12,8 +12,11 @@ class CNNDecoder(nn.Module):
     # Classical: one forward per sample, no per-patch quantum-batch blow-up.
     circuits_per_sample = 1
 
-    def __init__(self, n_detectors: int):
+    def __init__(self, n_detectors: int, detector_order=None):
         super().__init__()
+        perm = (torch.arange(n_detectors) if detector_order is None
+                else torch.as_tensor(detector_order, dtype=torch.long))
+        self.register_buffer("det_perm", perm)   # geometry ordering, saved in ckpt
         self.conv = nn.Sequential(
             nn.Conv1d(1, 16, kernel_size=3, padding=1), nn.ReLU(),
             nn.Conv1d(16, 32, kernel_size=3, padding=1), nn.ReLU(),
@@ -24,6 +27,7 @@ class CNNDecoder(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x[:, self.det_perm]     # reorder detectors by lattice geometry
         x = x.unsqueeze(1)          # [B, 1, D]
         x = self.conv(x)
         return self.head(x)

@@ -29,8 +29,12 @@ def _pool_layer(params, wires):
 
 
 class QCNNCong(nn.Module):
-    def __init__(self, n_detectors: int, patch_qubits: int = 12):
+    def __init__(self, n_detectors: int, patch_qubits: int = 12,
+                 detector_order=None):
         super().__init__()
+        perm = (torch.arange(n_detectors) if detector_order is None
+                else torch.as_tensor(detector_order, dtype=torch.long))
+        self.register_buffer("det_perm", perm)   # geometry ordering, saved in ckpt
         self.patch_qubits = patch_qubits
         self.n_patches = patching.n_patches(n_detectors, patch_qubits)
         # One quantum circuit runs per patch, so a batch of B samples issues
@@ -68,6 +72,7 @@ class QCNNCong(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: [B, n_detectors] -> patches [B, n_patches, q]
+        x = x[:, self.det_perm]     # reorder so patches are lattice neighbourhoods
         patches = patching.make_patches(x.detach().cpu().numpy(), self.patch_qubits)
         patches = torch.tensor(patches, dtype=torch.float32, device=x.device)
         B, K, q = patches.shape
