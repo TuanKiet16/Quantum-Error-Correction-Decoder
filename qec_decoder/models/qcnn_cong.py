@@ -33,6 +33,10 @@ class QCNNCong(nn.Module):
         super().__init__()
         self.patch_qubits = patch_qubits
         self.n_patches = patching.n_patches(n_detectors, patch_qubits)
+        # One quantum circuit runs per patch, so a batch of B samples issues
+        # B * n_patches circuits — the driver of GPU memory. Training reads this
+        # to bound its micro-batch size at large d.
+        self.circuits_per_sample = self.n_patches
         q = patch_qubits
         dev, diff_method = make_device(q)
 
@@ -45,12 +49,22 @@ class QCNNCong(nn.Module):
             wires = _pool_layer(pool1, wires)
             if len(wires) > 1:
                 _conv_layer(conv2, wires)
-            return qml.expval(qml.PauliZ(wires[0]))
+            # Multi-observable readout: one expval per surviving wire, so each
+            # patch yields a feature vector instead of a single scalar — the old
+            # single-Z readout compressed a 12-detector patch to one number.
+            return [qml.expval(qml.PauliZ(w)) for w in wires]
 
+        self.n_meas = q // 2            # _pool_layer keeps wires[::2]
         qnode = qml.QNode(circuit, dev, interface="torch", diff_method=diff_method)
         weight_shapes = {"conv1": (q, 2), "pool1": (q // 2,), "conv2": (q // 2, 2)}
         self.qlayer = qml.qnn.TorchLayer(qnode, weight_shapes)
-        self.head = nn.Linear(self.n_patches, 1)
+        # MLP head over the full per-patch feature vectors (n_patches * n_meas),
+        # replacing the linear head that saw one number per patch.
+        hidden = 64
+        self.head = nn.Sequential(
+            nn.Linear(self.n_patches * self.n_meas, hidden), nn.ReLU(),
+            nn.Linear(hidden, 1),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: [B, n_detectors] -> patches [B, n_patches, q]
@@ -58,6 +72,6 @@ class QCNNCong(nn.Module):
         patches = torch.tensor(patches, dtype=torch.float32, device=x.device)
         B, K, q = patches.shape
         flat = patches.reshape(B * K, q)
-        out = self.qlayer(flat)                 # [B*K]
-        out = out.reshape(B, K)
+        out = self.qlayer(flat)                 # [B*K, n_meas]
+        out = out.reshape(B, K * self.n_meas)   # concat patch features per sample
         return self.head(out)

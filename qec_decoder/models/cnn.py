@@ -9,6 +9,9 @@ def count_params(model: nn.Module) -> int:
 class CNNDecoder(nn.Module):
     """Classical 1D-CNN over the flat detection-event vector."""
 
+    # Classical: one forward per sample, no per-patch quantum-batch blow-up.
+    circuits_per_sample = 1
+
     def __init__(self, n_detectors: int):
         super().__init__()
         self.conv = nn.Sequential(

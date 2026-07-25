@@ -15,7 +15,11 @@ def binomial_uncertainty(p_L: float, N: int) -> float:
 
 def epsilon_per_cycle(p_L: float, rounds: int) -> float:
     t = rounds
-    return float((1 - (1 - 2 * p_L) ** (1 / t)) / 2)
+    # For p_L > 0.5 the base (1 - 2 p_L) is negative and the fractional power is
+    # complex; a decoder that bad has no meaningful per-cycle rate, so clamp the
+    # base at 0 — epsilon saturates at 0.5 (maximal per-cycle error).
+    base = max(1 - 2 * p_L, 0.0)
+    return float((1 - base ** (1 / t)) / 2)
 
 
 def fit_epsilon_per_cycle(pL_by_t: dict) -> float:
