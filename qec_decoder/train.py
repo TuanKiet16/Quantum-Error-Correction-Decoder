@@ -30,22 +30,31 @@ def make_dataset(d: int, ps, shots_per_p: int, seed: int = SEED):
 
 
 def train(name, d, ps, shots_per_p, epochs, out_dir="checkpoints", seed=SEED,
-          batch_size: int = 256):
+          batch_size: int = 256, device: str = "cpu"):
     set_seed(seed)
+    # default.qubit builds its statevector on the default torch device; point it
+    # at the GPU so the sim runs there instead of raising a device mismatch.
+    if str(device).startswith("cuda"):
+        torch.set_default_device(device)
     X, y = make_dataset(d, ps, shots_per_p, seed)
     n_detectors = X.shape[1]
-    model = build_model(name, n_detectors)
-    Xt = torch.tensor(X)
-    yt = torch.tensor(y).unsqueeze(1)
-    dataset = torch.utils.data.TensorDataset(Xt, yt)
-    gen = torch.Generator().manual_seed(seed)
-    loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
-                                         shuffle=True, generator=gen)
+    model = build_model(name, n_detectors).to(device)
+    Xt = torch.tensor(X, device="cpu")
+    yt = torch.tensor(y, device="cpu").unsqueeze(1)
+    n = Xt.shape[0]
+    # Manual seeded minibatching: DataLoader's sampler builds its shuffle tensor
+    # on the default torch device, which clashes with a CPU generator once the
+    # default device is CUDA. An explicit CPU randperm avoids that.
+    gen = torch.Generator(device="cpu").manual_seed(seed)
     opt = torch.optim.Adam(model.parameters(), lr=1e-2)
     loss_fn = nn.BCEWithLogitsLoss()
     model.train()
     for _ in range(epochs):
-        for Xb, yb in loader:
+        perm = torch.randperm(n, generator=gen, device="cpu")
+        for s in range(0, n, batch_size):
+            idx = perm[s:s + batch_size]
+            Xb = Xt[idx].to(device)
+            yb = yt[idx].to(device)
             opt.zero_grad()
             logits = model(Xb)
             loss = loss_fn(logits, yb)
@@ -53,7 +62,7 @@ def train(name, d, ps, shots_per_p, epochs, out_dir="checkpoints", seed=SEED,
             opt.step()
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, f"{name}_d{d}.pt")
-    torch.save({"state_dict": model.state_dict(), "name": name, "d": d,
+    torch.save({"state_dict": model.cpu().state_dict(), "name": name, "d": d,
                 "n_detectors": n_detectors}, path)
     return path
 
@@ -68,11 +77,13 @@ def main():
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--out", default="checkpoints")
     ap.add_argument("--batch-size", type=int, default=256)
+    ap.add_argument("--device", default="cpu",
+                    help="cpu | cuda (cuda needs QEC_QML_DEVICE=default.qubit)")
     a = ap.parse_args()
     from qec_decoder.runlog import Run
     with Run("train", vars(a), seed=SEED) as run:
         path = train(a.model, a.d, a.ps, a.shots, a.epochs, a.out,
-                     batch_size=a.batch_size)
+                     batch_size=a.batch_size, device=a.device)
         run.record({"checkpoint": path})
     print(f"saved {path}")
 

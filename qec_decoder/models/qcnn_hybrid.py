@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from qec_decoder.models import encoding
 from qec_decoder.models.qcnn_cong import _conv_layer, _pool_layer
+from qec_decoder.models.qdevice import make_device
 
 
 class QCNNHybrid(nn.Module):
@@ -17,7 +18,7 @@ class QCNNHybrid(nn.Module):
         self.to_features = nn.Linear(8 * n_qubits, n_qubits)
 
         q = n_qubits
-        dev = qml.device("lightning.qubit", wires=q)
+        dev, diff_method = make_device(q)
 
         def circuit(inputs, conv1, pool1, conv2):
             # Index the feature (last) axis so a batched [B, q] input broadcasts
@@ -30,7 +31,7 @@ class QCNNHybrid(nn.Module):
                 _conv_layer(conv2, wires)
             return qml.expval(qml.PauliZ(wires[0]))
 
-        qnode = qml.QNode(circuit, dev, interface="torch", diff_method="adjoint")
+        qnode = qml.QNode(circuit, dev, interface="torch", diff_method=diff_method)
         weight_shapes = {"conv1": (q, 2), "pool1": (q // 2,), "conv2": (q // 2, 2)}
         self.qlayer = qml.qnn.TorchLayer(qnode, weight_shapes)
         self.head = nn.Linear(1, 1)

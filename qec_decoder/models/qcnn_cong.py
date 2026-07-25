@@ -2,6 +2,7 @@ import pennylane as qml
 import torch
 import torch.nn as nn
 from qec_decoder.models import patching, encoding
+from qec_decoder.models.qdevice import make_device
 
 
 def _conv_layer(params, wires):
@@ -33,7 +34,7 @@ class QCNNCong(nn.Module):
         self.patch_qubits = patch_qubits
         self.n_patches = patching.n_patches(n_detectors, patch_qubits)
         q = patch_qubits
-        dev = qml.device("lightning.qubit", wires=q)
+        dev, diff_method = make_device(q)
 
         def circuit(inputs, conv1, pool1, conv2):
             # Index the feature (last) axis so a batched [B, q] input broadcasts
@@ -46,7 +47,7 @@ class QCNNCong(nn.Module):
                 _conv_layer(conv2, wires)
             return qml.expval(qml.PauliZ(wires[0]))
 
-        qnode = qml.QNode(circuit, dev, interface="torch", diff_method="adjoint")
+        qnode = qml.QNode(circuit, dev, interface="torch", diff_method=diff_method)
         weight_shapes = {"conv1": (q, 2), "pool1": (q // 2,), "conv2": (q // 2, 2)}
         self.qlayer = qml.qnn.TorchLayer(qnode, weight_shapes)
         self.head = nn.Linear(self.n_patches, 1)
