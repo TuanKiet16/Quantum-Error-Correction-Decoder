@@ -25,4 +25,12 @@ The backend is env-driven (`qec_decoder/models/qdevice.py`); default stays CPU
 
 ## Tuning
 Edit the `MODELS / DISTANCES / PS / SHOTS / EPOCHS` block in cell 6. Kaggle GPU
-sessions cap around 9h — start at `d=3`, grow to `d=5` once timing is known.
+sessions cap around 9h — start at `d=3`, grow to `d=5`/`d=7` once timing is known.
+
+## Memory at large d
+QCNN-Cong runs one quantum circuit per patch, and the patch count grows with the
+code distance (d3≈2, d5≈10, d7≈28, d9≈60 per sample). Left unchecked that
+issues `batch × patches` circuits at once and OOMs a 16 GB GPU by d=7. `--qchunk`
+(default 2048) caps circuits per forward and gradient-accumulates, so peak GPU
+memory stays ~constant across distances (~5–6 GB). Lower it if you still OOM;
+raise it for speed. Hybrid/CNN are unaffected (1 circuit per sample).

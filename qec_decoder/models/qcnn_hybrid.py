@@ -11,6 +11,9 @@ class QCNNHybrid(nn.Module):
         super().__init__()
         assert 10 <= n_qubits <= 16
         self.n_qubits = n_qubits
+        # Classical conv reduces each sample to one quantum circuit (not per
+        # patch), so the quantum batch equals the sample batch.
+        self.circuits_per_sample = 1
         self.reduce = nn.Sequential(
             nn.Conv1d(1, 8, kernel_size=3, padding=1), nn.ReLU(),
             nn.AdaptiveAvgPool1d(n_qubits),

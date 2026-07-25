@@ -33,6 +33,10 @@ class QCNNCong(nn.Module):
         super().__init__()
         self.patch_qubits = patch_qubits
         self.n_patches = patching.n_patches(n_detectors, patch_qubits)
+        # One quantum circuit runs per patch, so a batch of B samples issues
+        # B * n_patches circuits — the driver of GPU memory. Training reads this
+        # to bound its micro-batch size at large d.
+        self.circuits_per_sample = self.n_patches
         q = patch_qubits
         dev, diff_method = make_device(q)
 
