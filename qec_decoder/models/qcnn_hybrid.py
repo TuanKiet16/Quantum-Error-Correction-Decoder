@@ -7,9 +7,12 @@ from qec_decoder.models.qdevice import make_device
 
 
 class QCNNHybrid(nn.Module):
-    def __init__(self, n_detectors: int, n_qubits: int = 10):
+    def __init__(self, n_detectors: int, n_qubits: int = 10, detector_order=None):
         super().__init__()
         assert 10 <= n_qubits <= 16
+        perm = (torch.arange(n_detectors) if detector_order is None
+                else torch.as_tensor(detector_order, dtype=torch.long))
+        self.register_buffer("det_perm", perm)   # geometry ordering, saved in ckpt
         self.n_qubits = n_qubits
         # Classical conv reduces each sample to one quantum circuit (not per
         # patch), so the quantum batch equals the sample batch.
@@ -46,6 +49,7 @@ class QCNNHybrid(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x[:, self.det_perm]                    # reorder detectors by geometry
         h = self.reduce(x.unsqueeze(1))            # [B, 8, n_qubits]
         h = h.flatten(1)
         feat = torch.sigmoid(self.to_features(h))  # [B, n_qubits] in [0,1]

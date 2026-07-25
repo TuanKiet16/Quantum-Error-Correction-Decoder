@@ -3,20 +3,20 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
-from qec_decoder import data_gen
+from qec_decoder import data_gen, geometry
 from qec_decoder.seed import set_seed, SEED
 from qec_decoder.models.cnn import CNNDecoder
 from qec_decoder.models.qcnn_cong import QCNNCong
 from qec_decoder.models.qcnn_hybrid import QCNNHybrid
 
 
-def build_model(name: str, n_detectors: int) -> nn.Module:
+def build_model(name: str, n_detectors: int, detector_order=None) -> nn.Module:
     if name == "cnn":
-        return CNNDecoder(n_detectors)
+        return CNNDecoder(n_detectors, detector_order)
     if name == "qcnn_cong":
-        return QCNNCong(n_detectors)
+        return QCNNCong(n_detectors, detector_order=detector_order)
     if name == "qcnn_hybrid":
-        return QCNNHybrid(n_detectors)
+        return QCNNHybrid(n_detectors, detector_order=detector_order)
     raise ValueError(f"unknown model {name}")
 
 
@@ -51,7 +51,8 @@ def train(name, d, ps, shots_per_p, epochs, out_dir="checkpoints", seed=SEED,
         torch.set_default_device(device)
     X, y = make_dataset(d, ps, shots_per_p, seed)
     n_detectors = X.shape[1]
-    model = build_model(name, n_detectors).to(device)
+    order = geometry.detector_order(d)
+    model = build_model(name, n_detectors, order).to(device)
     Xt = torch.tensor(X, device="cpu")
     yt = torch.tensor(y, device="cpu").unsqueeze(1)
     n = Xt.shape[0]
