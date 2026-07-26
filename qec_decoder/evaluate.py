@@ -82,6 +82,8 @@ def _model_name(model) -> str:
 def sweep(ckpt_dir: str, ds, ps, shots: int, seed: int = TEST_SEED,
           qchunk: int = 2048, device: str = "cpu") -> dict:
     """Evaluate every available decoder on one shared test set per (d, p)."""
+    from qec_decoder.runlog import get_logger
+    log = get_logger()
     points = []
     eps_ref = {}                       # {decoder: {d: epsilon_d}} at ref_p
     ref_p = ps[len(ps) // 2]
@@ -93,6 +95,8 @@ def sweep(ckpt_dir: str, ds, ps, shots: int, seed: int = TEST_SEED,
             if os.path.exists(path):
                 m, _ = inference.load_model(path)
                 models[name] = m.to(device)
+        log.info(f"eval d={d}: decoders={['mwpm'] + list(models)} "
+                 f"shots={shots} ps={list(ps)}")
         matching = baseline.build_matching(d, ps[0])
         for i, p in enumerate(ps):
             dets, obs = data_gen.generate(d, p, shots, seed + i)
@@ -108,6 +112,9 @@ def sweep(ckpt_dir: str, ds, ps, shots: int, seed: int = TEST_SEED,
                 r = _point(name, d, p, preds, obs)
                 points.append(r)
                 per_decoder.append((name, r))
+            log.info("  d={} p={:.3f}  ".format(d, p) + "  ".join(
+                "{}:pL={:.4f}".format(nm, r["logical_error_rate"])
+                for nm, r in per_decoder))
             if abs(p - ref_p) < 1e-12:
                 for name, r in per_decoder:
                     eps_ref.setdefault(name, {})[d] = r["epsilon_d"]

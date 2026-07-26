@@ -1,9 +1,11 @@
 import argparse
 import os
+import time
 import numpy as np
 import torch
 import torch.nn as nn
 from qec_decoder import data_gen, geometry
+from qec_decoder.runlog import get_logger
 from qec_decoder.seed import set_seed, SEED
 from qec_decoder.models.cnn import CNNDecoder
 from qec_decoder.models.qcnn_cong import QCNNCong
@@ -64,9 +66,20 @@ def train(name, d, ps, shots_per_p, epochs, out_dir="checkpoints", seed=SEED,
     opt = torch.optim.Adam(model.parameters(), lr=1e-2)
     loss_fn = nn.BCEWithLogitsLoss()
     model.train()
-    for _ in range(epochs):
+
+    log = get_logger()
+    cps = int(getattr(model, "circuits_per_sample", 1))
+    n_batches = (n + batch_size - 1) // batch_size
+    log_every = max(1, n_batches // 5)     # ~5 progress lines per epoch
+    log.info(f"train {name} d{d}: N={n} n_det={n_detectors} "
+             f"batches/epoch={n_batches} micro_batch={mb} circuits/sample={cps} "
+             f"device={device} epochs={epochs}")
+    t_train = time.perf_counter()
+    for ep in range(epochs):
+        ep_t = time.perf_counter()
         perm = torch.randperm(n, generator=gen, device="cpu")
-        for s in range(0, n, batch_size):
+        running = torch.zeros((), device=device)   # accumulate on-device, no sync
+        for bi, s in enumerate(range(0, n, batch_size)):
             idx = perm[s:s + batch_size]
             bsz = idx.numel()
             opt.zero_grad()
@@ -81,7 +94,21 @@ def train(name, d, ps, shots_per_p, epochs, out_dir="checkpoints", seed=SEED,
                 logits = model(Xb)
                 loss = loss_fn(logits, yb) * (mi.numel() / bsz)
                 loss.backward()
+                running += loss.detach()
             opt.step()
+            if (bi + 1) % log_every == 0 or bi + 1 == n_batches:
+                el = time.perf_counter() - ep_t
+                done = min(s + batch_size, n)
+                rate = done * cps / el if el > 0 else 0.0
+                log.info(f"  {name} d{d} ep {ep + 1}/{epochs} "
+                         f"batch {bi + 1}/{n_batches} loss={running.item() / (bi + 1):.4f} "
+                         f"{rate:.0f} circ/s")
+        ep_dur = time.perf_counter() - ep_t
+        eta = ep_dur * (epochs - ep - 1)
+        log.info(f"{name} d{d} epoch {ep + 1}/{epochs} done "
+                 f"loss={running.item() / n_batches:.4f} {ep_dur:.1f}s "
+                 f"eta {eta / 60:.1f}min")
+    log.info(f"train {name} d{d} finished in {(time.perf_counter() - t_train) / 60:.1f}min")
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, f"{name}_d{d}.pt")
     torch.save({"state_dict": model.cpu().state_dict(), "name": name, "d": d,
