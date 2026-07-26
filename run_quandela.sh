@@ -31,7 +31,14 @@ cd "$WORK"
 [ -d Quantum-Error-Correction-Decoder ] || git clone "$REPO_URL"
 cd Quantum-Error-Correction-Decoder
 git pull --ff-only || true
-python -c "import torch" 2>/dev/null || pip install -q torch
+# Torch must match the box's CUDA 12.4 driver. Plain `pip install torch` pulls a
+# newer-CUDA wheel that fails with "NVIDIA driver too old" on this L4, so install
+# (or reinstall) the cu124 build whenever CUDA isn't actually usable.
+if ! python -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; then
+  echo "installing torch cu124 (matches the CUDA 12.4 driver)..."
+  pip uninstall -y torch >/dev/null 2>&1 || true
+  pip install -q torch --index-url https://download.pytorch.org/whl/cu124
+fi
 pip install -q -e . matplotlib
 mkdir -p logs checkpoints results figures
 
