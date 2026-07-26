@@ -10,6 +10,10 @@
 # Tune via env, e.g.:  DISTANCES="3 5" SHOTS=50000 bash run_quandela.sh
 set -euo pipefail
 
+# Unbuffered Python so per-epoch progress streams live into the redirected
+# per-model logs instead of sitting in a block buffer.
+export PYTHONUNBUFFERED=1
+
 REPO_URL=https://github.com/TuanKiet16/Quantum-Error-Correction-Decoder.git
 WORK=${WORK:-/workspace}
 DISTANCES=(${DISTANCES:-3 5 7})
