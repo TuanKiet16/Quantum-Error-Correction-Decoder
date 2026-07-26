@@ -19,8 +19,9 @@ WORK=${WORK:-/workspace}
 DISTANCES=(${DISTANCES:-3 5})
 CONG_MAX_D=${CONG_MAX_D:-5}         # skip pure-Cong past this d (its per-patch K blows up)
 PS="${PS:-0.003 0.005 0.008 0.01 0.015}"
-SHOTS=${SHOTS:-15000}
-EPOCHS=${EPOCHS:-30}
+SHOTS=${SHOTS:-30000}
+EPOCHS=${EPOCHS:-80}
+LR=${LR:-3e-3}                     # 1e-2 tended to plateau; lower converges better
 BATCH=${BATCH:-4096}               # big batch amortizes default.qubit kernel launches on the L4
 GPU_QCHUNK=${GPU_QCHUNK:-6144}     # L4 24GB fits ~6k circuits/forward w/ backprop
 EVAL_QCHUNK=${EVAL_QCHUNK:-16384}  # eval has no backprop -> push higher
@@ -52,13 +53,13 @@ train() {   # model  distance  device  qchunk  qml_device
     # GPU (Cong) stream: show progress live in the terminal AND save the log.
     QEC_QML_DEVICE=$qmldev \
     python -m qec_decoder.train --model "$model" --d "$d" --ps $PS \
-        --shots "$SHOTS" --epochs "$EPOCHS" --batch-size "$BATCH" \
+        --shots "$SHOTS" --epochs "$EPOCHS" --batch-size "$BATCH" --lr "$LR" \
         --device "$device" --qchunk "$qchunk" 2>&1 | tee "$log"
   else
     # Parallel CPU jobs: quiet to their own logs so they don't interleave.
     QEC_QML_DEVICE=$qmldev OMP_NUM_THREADS=$CPU_JOB_THREADS \
     python -m qec_decoder.train --model "$model" --d "$d" --ps $PS \
-        --shots "$SHOTS" --epochs "$EPOCHS" --batch-size "$BATCH" \
+        --shots "$SHOTS" --epochs "$EPOCHS" --batch-size "$BATCH" --lr "$LR" \
         --device "$device" --qchunk "$qchunk" > "$log" 2>&1
   fi
   echo "<<< done $model d$d"
