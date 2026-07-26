@@ -16,11 +16,12 @@ export PYTHONUNBUFFERED=1
 
 REPO_URL=https://github.com/TuanKiet16/Quantum-Error-Correction-Decoder.git
 WORK=${WORK:-/workspace}
-DISTANCES=(${DISTANCES:-3 5 7})
+DISTANCES=(${DISTANCES:-3 5})
+CONG_MAX_D=${CONG_MAX_D:-5}         # skip pure-Cong past this d (its per-patch K blows up)
 PS="${PS:-0.003 0.005 0.008 0.01 0.015}"
-SHOTS=${SHOTS:-20000}
-EPOCHS=${EPOCHS:-60}
-BATCH=${BATCH:-1024}
+SHOTS=${SHOTS:-15000}
+EPOCHS=${EPOCHS:-30}
+BATCH=${BATCH:-4096}               # big batch amortizes default.qubit kernel launches on the L4
 GPU_QCHUNK=${GPU_QCHUNK:-6144}     # L4 24GB fits ~6k circuits/forward w/ backprop
 EVAL_QCHUNK=${EVAL_QCHUNK:-16384}  # eval has no backprop -> push higher
 EVAL_SHOTS=${EVAL_SHOTS:-50000}
@@ -63,18 +64,28 @@ train() {   # model  distance  device  qchunk  qml_device
   echo "<<< done $model d$d"
 }
 
-# ---- GPU stream: QCNN-Cong, one distance at a time (full GPU each) ----
-( for d in "${DISTANCES[@]}"; do train qcnn_cong "$d" cuda "$GPU_QCHUNK" default.qubit; done ) &
+# ---- GPU stream: both QCNNs on default.qubit (it broadcasts the batch; lightning
+#      on CPU would Python-loop each sample and be far slower). Hybrid first (1
+#      circuit/sample, cheap), then Cong up to CONG_MAX_D (per-patch K explodes). ----
+(
+  for d in "${DISTANCES[@]}"; do train qcnn_hybrid "$d" cuda "$GPU_QCHUNK" default.qubit; done
+  for d in "${DISTANCES[@]}"; do
+    if [ "$d" -le "$CONG_MAX_D" ]; then
+      train qcnn_cong "$d" cuda "$GPU_QCHUNK" default.qubit
+    else
+      echo "skip qcnn_cong d$d (> CONG_MAX_D=$CONG_MAX_D; too many patches/sample)"
+    fi
+  done
+) &
 gpu_pid=$!
 
-# ---- CPU stream: QCNN-Hybrid + CNN, all distances in parallel ----
+# ---- CPU stream: classical CNN (no quantum sim) in parallel across the cores ----
 for d in "${DISTANCES[@]}"; do
-  train qcnn_hybrid "$d" cpu 4096 lightning.qubit &
-  train cnn         "$d" cpu 4096 lightning.qubit &
+  train cnn "$d" cpu 4096 lightning.qubit &
 done
 
-wait "$gpu_pid"   # cong finished
-wait              # hybrid + cnn finished
+wait "$gpu_pid"   # QCNNs finished
+wait              # cnn finished
 echo "=== all training done; checkpoints: ==="; ls -la checkpoints
 
 # ---- evaluate all decoders vs MWPM on a shared fresh test set (GPU) ----
