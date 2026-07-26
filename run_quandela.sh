@@ -19,8 +19,10 @@ WORK=${WORK:-/workspace}
 DISTANCES=(${DISTANCES:-3 5})
 CONG_MAX_D=${CONG_MAX_D:-5}         # skip pure-Cong past this d (its per-patch K blows up)
 PS="${PS:-0.003 0.005 0.008 0.01 0.015}"
-SHOTS=${SHOTS:-30000}
+SHOTS=${SHOTS:-30000}              # hybrid/cnn (cheap: 1 circuit/sample)
 EPOCHS=${EPOCHS:-80}
+CONG_SHOTS=${CONG_SHOTS:-10000}    # Cong is K circuits/sample + capacity-capped -> lighter
+CONG_EPOCHS=${CONG_EPOCHS:-40}
 LR=${LR:-3e-3}                     # 1e-2 tended to plateau; lower converges better
 BATCH=${BATCH:-4096}               # big batch amortizes default.qubit kernel launches on the L4
 GPU_QCHUNK=${GPU_QCHUNK:-6144}     # L4 24GB fits ~6k circuits/forward w/ backprop
@@ -44,22 +46,23 @@ fi
 pip install -q -e . matplotlib
 mkdir -p logs checkpoints results figures
 
-train() {   # model  distance  device  qchunk  qml_device
+train() {   # model  distance  device  qchunk  qml_device  [shots]  [epochs]
   local model=$1 d=$2 device=$3 qchunk=$4 qmldev=$5
+  local shots=${6:-$SHOTS} epochs=${7:-$EPOCHS}
   local ckpt="checkpoints/${model}_d${d}.pt" log="logs/${model}_d${d}.log"
   if [ -f "$ckpt" ]; then echo "skip (exists): $ckpt"; return 0; fi
-  echo ">>> train $model d$d on $device"
+  echo ">>> train $model d$d on $device (shots=$shots epochs=$epochs)"
   if [ "$device" = cuda ]; then
-    # GPU (Cong) stream: show progress live in the terminal AND save the log.
+    # GPU stream: show progress live in the terminal AND save the log.
     QEC_QML_DEVICE=$qmldev \
     python -m qec_decoder.train --model "$model" --d "$d" --ps $PS \
-        --shots "$SHOTS" --epochs "$EPOCHS" --batch-size "$BATCH" --lr "$LR" \
+        --shots "$shots" --epochs "$epochs" --batch-size "$BATCH" --lr "$LR" \
         --device "$device" --qchunk "$qchunk" 2>&1 | tee "$log"
   else
     # Parallel CPU jobs: quiet to their own logs so they don't interleave.
     QEC_QML_DEVICE=$qmldev OMP_NUM_THREADS=$CPU_JOB_THREADS \
     python -m qec_decoder.train --model "$model" --d "$d" --ps $PS \
-        --shots "$SHOTS" --epochs "$EPOCHS" --batch-size "$BATCH" --lr "$LR" \
+        --shots "$shots" --epochs "$epochs" --batch-size "$BATCH" --lr "$LR" \
         --device "$device" --qchunk "$qchunk" > "$log" 2>&1
   fi
   echo "<<< done $model d$d"
@@ -72,7 +75,8 @@ train() {   # model  distance  device  qchunk  qml_device
   for d in "${DISTANCES[@]}"; do train qcnn_hybrid "$d" cuda "$GPU_QCHUNK" default.qubit; done
   for d in "${DISTANCES[@]}"; do
     if [ "$d" -le "$CONG_MAX_D" ]; then
-      train qcnn_cong "$d" cuda "$GPU_QCHUNK" default.qubit
+      # Cong pays K circuits/sample and is capacity-capped, so train it lighter.
+      train qcnn_cong "$d" cuda "$GPU_QCHUNK" default.qubit "$CONG_SHOTS" "$CONG_EPOCHS"
     else
       echo "skip qcnn_cong d$d (> CONG_MAX_D=$CONG_MAX_D; too many patches/sample)"
     fi
