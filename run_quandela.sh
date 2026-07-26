@@ -37,14 +37,22 @@ mkdir -p logs checkpoints results figures
 
 train() {   # model  distance  device  qchunk  qml_device
   local model=$1 d=$2 device=$3 qchunk=$4 qmldev=$5
-  local ckpt="checkpoints/${model}_d${d}.pt"
+  local ckpt="checkpoints/${model}_d${d}.pt" log="logs/${model}_d${d}.log"
   if [ -f "$ckpt" ]; then echo "skip (exists): $ckpt"; return 0; fi
   echo ">>> train $model d$d on $device"
-  QEC_QML_DEVICE=$qmldev OMP_NUM_THREADS=$CPU_JOB_THREADS \
-  python -m qec_decoder.train --model "$model" --d "$d" --ps $PS \
-      --shots "$SHOTS" --epochs "$EPOCHS" --batch-size "$BATCH" \
-      --device "$device" --qchunk "$qchunk" \
-      > "logs/${model}_d${d}.log" 2>&1
+  if [ "$device" = cuda ]; then
+    # GPU (Cong) stream: show progress live in the terminal AND save the log.
+    QEC_QML_DEVICE=$qmldev \
+    python -m qec_decoder.train --model "$model" --d "$d" --ps $PS \
+        --shots "$SHOTS" --epochs "$EPOCHS" --batch-size "$BATCH" \
+        --device "$device" --qchunk "$qchunk" 2>&1 | tee "$log"
+  else
+    # Parallel CPU jobs: quiet to their own logs so they don't interleave.
+    QEC_QML_DEVICE=$qmldev OMP_NUM_THREADS=$CPU_JOB_THREADS \
+    python -m qec_decoder.train --model "$model" --d "$d" --ps $PS \
+        --shots "$SHOTS" --epochs "$EPOCHS" --batch-size "$BATCH" \
+        --device "$device" --qchunk "$qchunk" > "$log" 2>&1
+  fi
   echo "<<< done $model d$d"
 }
 
