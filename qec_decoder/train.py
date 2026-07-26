@@ -45,7 +45,8 @@ def micro_batch_size(model, batch_size: int, qchunk: int) -> int:
 
 
 def train(name, d, ps, shots_per_p, epochs, out_dir="checkpoints", seed=SEED,
-          batch_size: int = 256, device: str = "cpu", qchunk: int = 2048):
+          batch_size: int = 256, device: str = "cpu", qchunk: int = 2048,
+          lr: float = 1e-2):
     set_seed(seed)
     # default.qubit builds its statevector on the default torch device; point it
     # at the GPU so the sim runs there instead of raising a device mismatch.
@@ -63,8 +64,14 @@ def train(name, d, ps, shots_per_p, epochs, out_dir="checkpoints", seed=SEED,
     # on the default torch device, which clashes with a CPU generator once the
     # default device is CUDA. An explicit CPU randperm avoids that.
     gen = torch.Generator(device="cpu").manual_seed(seed)
-    opt = torch.optim.Adam(model.parameters(), lr=1e-2)
-    loss_fn = nn.BCEWithLogitsLoss()
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=max(1, epochs))
+    # Logical flips are rare at low p; weight the positive class by neg/pos so the
+    # decoder can't win by always predicting "no error".
+    n_pos = float(yt.sum().item())
+    n_neg = float(n - n_pos)
+    pos_weight = torch.tensor([n_neg / n_pos if n_pos > 0 else 1.0], device=device)
+    loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     model.train()
 
     log = get_logger()
@@ -73,7 +80,8 @@ def train(name, d, ps, shots_per_p, epochs, out_dir="checkpoints", seed=SEED,
     log_every = max(1, n_batches // 5)     # ~5 progress lines per epoch
     log.info(f"train {name} d{d}: N={n} n_det={n_detectors} "
              f"batches/epoch={n_batches} micro_batch={mb} circuits/sample={cps} "
-             f"device={device} epochs={epochs}")
+             f"device={device} epochs={epochs} lr={lr} "
+             f"pos_weight={pos_weight.item():.2f}")
     t_train = time.perf_counter()
     for ep in range(epochs):
         ep_t = time.perf_counter()
@@ -103,6 +111,7 @@ def train(name, d, ps, shots_per_p, epochs, out_dir="checkpoints", seed=SEED,
                 log.info(f"  {name} d{d} ep {ep + 1}/{epochs} "
                          f"batch {bi + 1}/{n_batches} loss={running.item() / (bi + 1):.4f} "
                          f"{rate:.0f} circ/s")
+        sched.step()
         ep_dur = time.perf_counter() - ep_t
         eta = ep_dur * (epochs - ep - 1)
         log.info(f"{name} d{d} epoch {ep + 1}/{epochs} done "
@@ -131,11 +140,13 @@ def main():
     ap.add_argument("--qchunk", type=int, default=2048,
                     help="max quantum circuits per forward; caps GPU memory at "
                          "large d via gradient accumulation")
+    ap.add_argument("--lr", type=float, default=1e-2)
     a = ap.parse_args()
     from qec_decoder.runlog import Run
     with Run("train", vars(a), seed=SEED) as run:
         path = train(a.model, a.d, a.ps, a.shots, a.epochs, a.out,
-                     batch_size=a.batch_size, device=a.device, qchunk=a.qchunk)
+                     batch_size=a.batch_size, device=a.device, qchunk=a.qchunk,
+                     lr=a.lr)
         run.record({"checkpoint": path})
     print(f"saved {path}")
 
